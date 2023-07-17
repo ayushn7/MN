@@ -1,0 +1,261 @@
+# Practical 4 : Secure the Management Plane
+
+==================================================================================
+# Step 1: Configure loopbacks and assign addresses.
+
+# Router R1
+conf t
+hostname R1
+interface Loopback 0
+description R1 LAN
+ip address 192.168.1.1 255.255.255.0
+exit
+
+interface Serial3/0
+description R1 --> R2
+ip address 10.1.1.1 255.255.255.252
+clock rate 128000
+no shutdown
+exit
+end
+
+# Router R2
+conf t
+hostname R2
+interface Serial3/0
+description R2 --> R1
+ip address 10.1.1.2 255.255.255.252
+no shutdown
+exit
+
+interface Serial3/1
+description R2 --> R3
+ip address 10.2.2.1 255.255.255.252
+clock rate 128000
+no shutdown
+exit
+end
+
+# Router R3
+conf t
+hostname R3
+interface Loopback0
+description R3 LAN
+ip address 192.168.3.1 255.255.255.0
+exit
+
+interface Serial3/1
+description R3 --> R2
+ip address 10.2.2.2 255.255.255.252
+no shutdown
+exit 
+end
+
+==================================================================================
+# Step 2: Configure static routes.
+
+# R1 Router
+conf t
+ip route 0.0.0.0 0.0.0.0 10.1.1.2
+exit
+
+# R3 Router
+conf t
+ip route 0.0.0.0 0.0.0.0 10.2.2.1
+exit
+
+# R2 Router
+conf t
+ip route 192.168.1.0 255.255.255.0 10.1.1.1
+ip route 192.168.3.0 255.255.255.0 10.2.2.2
+exit
+
+# R1 Router
+tclsh
+foreach address {
+192.168.1.1
+10.1.1.1
+10.1.1.2
+10.2.2.1
+10.2.2.2
+192.168.3.1
+} { ping $address }
+
+exit
+
+==================================================================================
+# Step 3: Secure management access.
+
+# R1 Router
+conf t
+security passwords min-length 10
+enable secret class12345
+line console 0
+password ciscoconpass
+exec-timeout 5 0
+login
+logging synchronous
+exit
+line vty 0 4
+password ciscovtypass
+exec-timeout 5 0
+login
+exit
+line aux 0
+no exec
+end
+
+conf t
+service password-encryption
+banner motd $Unauthorized access strictly prohibited!$
+exit
+
+
+# R3 Router
+conf t
+security passwords min-length 10
+enable secret class12345
+line console 0
+password ciscoconpass
+exec-timeout 5 0
+login
+logging synchronous
+exit
+line vty 0 4
+password ciscovtypass
+exec-timeout 5 0
+login
+exit
+line aux 0
+no exec
+end
+
+conf t
+service password-encryption
+banner motd $Unauthorized access strictly prohibited!$
+exit
+
+==================================================================================
+Step 4: Configure enhanced username password security.
+
+# R1 Router
+conf t
+username JR-ADMIN secret class12345
+username ADMIN secret class54321
+line console 0
+login local
+exit
+line vty 0 4
+login local
+end
+
+
+# R3 Router
+conf t
+username JR-ADMIN secret class12345
+username ADMIN secret class54321
+line console 0
+login local
+exit
+line vty 0 4
+login local
+end
+
+# R1 Router
+telnet 10.2.2.2
+
+username: ADMIN
+Password: class54321
+R3>exit
+
+==================================================================================
+# Step 5: Enabling AAA RADIUS Authentication with Local User for Backup.
+
+# R1 Router
+conf t
+aaa new-model
+radius server RADIUS-1
+address ipv4 192.168.1.101
+key RADIUS-1-pa55w0rd
+exit
+radius server RADIUS-2
+address ipv4 192.168.1.102
+key RADIUS-2-pa55w0rd
+exit
+aaa group server radius RADIUS-GROUP
+server name RADIUS-1
+server name RADIUS-2
+exit
+
+aaa authentication login default group RADIUS-GROUP local
+aaa authentication login TELNET-LOGIN group RADIUS-GROUP local-case
+line vty 0 4
+login authentication TELNET-LOGIN
+exit
+end
+
+
+# R3 Router
+conf t
+aaa new-model
+radius server RADIUS-1
+address ipv4 192.168.1.101
+key RADIUS-1-pa55w0rd
+exit
+radius server RADIUS-2
+address ipv4 192.168.1.102
+key RADIUS-2-pa55w0rd
+exit
+aaa group server radius RADIUS-GROUP
+server name RADIUS-1
+server name RADIUS-2
+exit
+
+aaa authentication login default group RADIUS-GROUP local
+aaa authentication login TELNET-LOGIN group RADIUS-GROUP local-case
+line vty 0 4
+login authentication TELNET-LOGIN
+exit
+end
+
+# R1 Router 
+
+telnet 10.2.2.2
+Username: ADMIN
+Password: class54321
+R3>exit
+
+==================================================================================
+# Step 6: Enabling secure remote management using SSH.
+
+# R1 Router
+conf t
+ip domain-name ccnasecurity.com
+crypto key zeroize rsa
+crypto key generate rsa general-keys modulus 1024
+ip ssh version 2
+line vty 0 4
+transport input ssh
+end
+show ip ssh
+
+
+# R3 Router
+conf t
+ip domain-name ccnasecurity.com
+crypto key zeroize rsa
+crypto key generate rsa general-keys modulus 1024
+ip ssh version 2
+line vty 0 4
+transport input ssh
+end
+show ip ssh
+
+# R1 Router
+ssh -l ADMIN 10.2.2.2
+Password: class54321
+R3>en
+Password: class12345
+R3#
+
+====================================================================================================================================================================

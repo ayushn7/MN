@@ -1,0 +1,129 @@
+Practical 2 : Using the AS_PATH Attribute
+
+==================================================================================
+# Step 1: Configure the hostname and interface addresses
+
+# Router R1 (hostname SanJose)
+conf t
+hostname SanJose
+interface Loopback0
+ip address 10.1.1.1 255.255.255.0
+
+interface Serial3/0
+ip address 192.168.1.5 255.255.255.252
+clock rate 128000
+no shutdown
+end
+
+# Router R2 (hostname ISP)
+conf t
+hostname ISP
+interface Loopback0
+ip address 10.2.2.1 255.255.255.0
+
+interface Serial3/0
+ip address 192.168.1.6 255.255.255.252
+no shutdown
+
+interface Serial3/1
+ip address 172.24.1.17 255.255.255.252
+clock rate 128000
+no shutdown
+end
+
+# Router R3 (hostname CustRtr)
+conf t
+hostname CustRtr
+interface Loopback0
+ip address 10.3.3.1 255.255.255.0
+
+interface Serial3/1
+ip address 172.24.1.18 255.255.255.252
+no shutdown
+end
+
+==================================================================================
+# Step 2: Configure BGP
+
+# SanJose
+conf t
+router bgp 100
+neighbor 192.168.1.6 remote-as 300
+network 10.1.1.0 mask 255.255.255.0
+end
+
+# ISP
+conf t
+router bgp 300
+neighbor 192.168.1.5 remote-as 100
+neighbor 172.24.1.18 remote-as 65000
+network 10.2.2.0 mask 255.255.255.0
+end
+
+# CustRtr
+conf t
+router bgp 65000
+neighbor 172.24.1.17 remote-as 300
+network 10.3.3.0 mask 255.255.255.0
+end
+
+# ISP
+show ip bgp neighbors
+
+==================================================================================
+Step 3: Remove the private AS
+
+# SanJose
+show ip route
+ping 10.3.3.1 source 10.1.1.1
+
+# SanJose
+ping
+Target IP address: 10.3.3.1
+Extended commands [n]: y
+Source address or interface: 10.1.1.1
+
+show ip bgp
+
+# ISP
+conf t
+router bgp 300
+neighbor 192.168.1.5 remove-private-as
+end
+
+# SanJose
+ping 10.3.3.1 source lo0
+
+show ip bgp
+
+==================================================================================
+Step 4: Use the AS_PATH attribute to filter routes
+
+# ISP
+conf t
+ip as-path access-list 1 deny ^100$
+ip as-path access-list 1 permit .*
+router bgp 300
+neighbor 172.24.1.18 filter-list 1 out
+end
+
+clear ip bgp *
+show ip route
+
+# CustRtr
+show ip route
+
+# ISP
+show ip bgp regexp ^100$
+
+tclsh
+foreach address {
+10.1.1.1
+10.2.2.1
+10.3.3.1
+192.168.1.5
+192.168.1.6
+172.24.1.17
+172.24.1.18
+} {
+ping $address }

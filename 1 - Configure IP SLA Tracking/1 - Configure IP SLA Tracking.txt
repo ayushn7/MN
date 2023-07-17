@@ -1,0 +1,208 @@
+Practical 1 : Configure IP SLA Tracking and Path Control Topology
+
+==================================================================================
+# Step 1: Configure loopbacks and assign addresses
+
+# Router R1
+conf t
+hostname R1
+
+interface Loopback 0
+description R1 LAN
+ip address 192.168.1.1 255.255.255.0
+
+interface Serial3/0
+description R1 --> ISP1
+ip address 209.165.201.2 255.255.255.252
+clock rate 128000
+bandwidth 128
+no shutdown
+
+interface Serial3/1
+description R1 --> ISP2
+ip address 209.165.202.130 255.255.255.252
+bandwidth 128
+no shutdown
+end
+
+# Router ISP1 (R2)
+conf t
+hostname ISP1
+
+interface Loopback0
+description Simulated Internet Web Server
+ip address 209.165.200.254 255.255.255.255
+
+interface Loopback1
+description ISP1 DNS Server
+ip address 209.165.201.30 255.255.255.255
+
+interface Serial3/0
+description ISP1 --> R1
+ip address 209.165.201.1 255.255.255.252
+bandwidth 128
+no shutdown
+
+interface Serial3/1
+description ISP1 --> ISP2
+ip address 209.165.200.225 255.255.255.252
+clock rate 128000
+bandwidth 128
+no shutdown
+end
+
+# Router ISP2 (R3)
+conf t
+hostname ISP2
+
+interface Loopback0
+description Simulated Internet Web Server
+ip address 209.165.200.254 255.255.255.255
+
+interface Loopback1
+description ISP2 DNS Server
+ip address 209.165.202.158 255.255.255.255
+
+interface Serial3/0
+description ISP2 --> R1
+ip address 209.165.202.129 255.255.255.252
+clock rate 128000
+bandwidth 128
+no shutdown
+
+interface Serial3/1
+description ISP2 --> ISP1
+ip address 209.165.200.226 255.255.255.252
+bandwidth 128
+no shutdown
+end
+
+# R1
+show interfaces description
+
+==================================================================================
+Step 2: Configure static routing
+
+# R1
+conf t
+ip route 0.0.0.0 0.0.0.0 209.165.201.1
+end
+
+# Router ISP1 (R2)
+conf t
+router eigrp 1
+network 209.165.200.224 0.0.0.3
+network 209.165.201.0 0.0.0.31
+no auto-summary
+exit
+ip route 192.168.1.0 255.255.255.0 209.165.201.2
+end
+
+# Router ISP2 (R3)
+conf t
+router eigrp 1
+network 209.165.200.224 0.0.0.3
+network 209.165.202.128 0.0.0.31
+no auto-summary
+exit
+ip route 192.168.1.0 255.255.255.0 209.165.202.130
+end
+
+# R1
+tclsh
+foreach address {
+209.165.200.254
+209.165.201.30
+209.165.202.158
+} {
+ping $address source 192.168.1.1
+}
+
+foreach address {
+209.165.200.254
+209.165.201.30
+209.165.202.158
+} {
+trace $address source 192.168.1.1
+}
+
+exit
+
+==================================================================================
+Step 3: Configure IP SLA probes
+
+# R1 Router
+conf t
+ip sla 11
+icmp-echo 209.165.201.30
+frequency 10
+exit
+ip sla schedule 11 life forever start-time now
+end
+
+show ip sla configuration 11
+show ip sla statistics
+
+# R1 Router
+conf t
+ip sla 22
+icmp-echo 209.165.202.158
+frequency 10
+exit
+ip sla schedule 22 life forever start-time now
+end
+
+show ip sla configuration 22
+show ip sla statistics 22
+
+=================================================================================
+Step 4: Configure tracking options
+
+# R1 Router
+conf t
+no ip route 0.0.0.0 0.0.0.0 209.165.201.1
+ip route 0.0.0.0 0.0.0.0 209.165.201.1 5
+exit
+
+show ip route
+
+# R1 Router
+conf t
+track 1 ip sla 11 reachability
+delay down 10 up 1
+end
+debug ip routing
+
+# R1 Router
+conf t
+ip route 0.0.0.0 0.0.0.0 209.165.201.1 2 track 1
+track 2 ip sla 22 reachability
+delay down 10 up 1
+exit
+ip route 0.0.0.0 0.0.0.0 209.165.202.129 3 track 2
+exit
+
+show ip route
+
+==================================================================================
+# Step 5: Verify IP SLA operation
+
+# Router ISP1 (R2)
+conf t
+int lo1
+shutdown
+
+# R1
+show ip route
+show ip sla statistics
+
+trace 209.165.200.254 source 192.168.1.1
+
+# R1 
+conf t
+int lo1
+no shutdown
+end
+
+show ip sla statistics
+show ip route

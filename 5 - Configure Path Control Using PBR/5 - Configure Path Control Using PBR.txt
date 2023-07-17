@@ -1,0 +1,218 @@
+Practical 5 : Configure And Verify Path Control Using PBR
+
+# Step 1: Configure loopbacks and assign addresses
+
+# Router R1
+conf t
+hostname R1
+
+interface Lo1
+description R1 LAN
+ip address 192.168.1.1 255.255.255.0
+
+interface Serial3/0
+description R1 --> R2
+ip address 172.16.12.1 255.255.255.248
+clock rate 128000
+bandwidth 128
+no shutdown
+
+interface Serial3/1
+description R1 --> R3
+ip address 172.16.13.1 255.255.255.248
+bandwidth 64
+no shutdown
+end
+
+# Router R2
+conf t
+hostname R2
+
+interface Lo2
+description R2 LAN
+ip address 192.168.2.1 255.255.255.0
+
+interface Serial3/0
+description R2 --> R1
+ip address 172.16.12.2 255.255.255.248
+bandwidth 128
+no shutdown
+
+interface Serial3/1
+description R2 --> R3
+ip address 172.16.23.2 255.255.255.248
+clock rate 128000
+bandwidth 128
+no shutdown
+end
+
+# Router R3
+conf t
+hostname R3
+
+interface Lo3
+description R3 LAN
+ip address 192.168.3.1 255.255.255.0
+
+interface Serial3/0
+description R3 --> R1
+ip address 172.16.13.3 255.255.255.248
+clock rate 64000
+bandwidth 64
+no shutdown
+
+interface Serial3/1
+description R3 --> R2
+ip address 172.16.23.3 255.255.255.248
+bandwidth 128
+no shutdown
+
+interface Serial3/2
+description R3 --> R4
+ip address 172.16.34.3 255.255.255.248
+clock rate 64000
+bandwidth 64
+no shutdown
+end
+
+# Router R4
+conf t
+hostname R4
+
+interface Lo4
+description R4 LAN A
+ip address 192.168.4.1 255.255.255.128
+
+interface Lo5
+description R4 LAN B
+ip address 192.168.4.129 255.255.255.128
+
+interface Serial3/2
+description R4 --> R3
+ip address 172.16.34.4 255.255.255.248
+bandwidth 64
+no shutdown
+end
+
+# R3 Router
+
+show ip interface brief
+show protocols
+show interfaces description
+
+# Step 2: Configure basic EIGRP
+
+# R1 Router
+conf t
+router eigrp 1
+network 192.168.1.0
+network 172.16.12.0 0.0.0.7
+network 172.16.13.0 0.0.0.7
+no auto-summary
+end
+
+# R2 Router
+conf t
+router eigrp 1
+network 192.168.2.0
+network 172.16.12.0 0.0.0.7
+network 172.16.23.0 0.0.0.7
+no auto-summary
+end
+
+# R3 Router
+conf t
+router eigrp 1
+network 192.168.3.0
+network 172.16.13.0 0.0.0.7
+network 172.16.23.0 0.0.0.7
+network 172.16.34.0 0.0.0.7
+no auto-summary
+end
+
+# R4 Router
+conf t
+router eigrp 1
+network 192.168.4.0
+network 172.16.34.0 0.0.0.7
+no auto-summary
+end
+
+Step 3: Verify EIGRP connectivity
+
+# R1 & R2 & R3 & R4 Router
+show ip eigrp neighbors
+
+# R1 Router
+tclsh
+foreach address {
+172.16.12.1
+172.16.12.2
+172.16.13.1
+172.16.13.3
+172.16.23.2
+172.16.23.3
+172.16.34.3
+172.16.34.4
+192.168.1.1
+192.168.2.1
+192.168.3.1
+192.168.4.1
+192.168.4.129
+} { ping $address }
+
+Step 4: Verify the current path
+
+# R1 Router
+show ip route
+
+# R4 Router
+traceroute 192.168.1.1 source 192.168.4.1
+traceroute 192.168.1.1 source 192.168.4.129
+
+# R3 Router
+show ip route
+show interfaces serial3/2
+show interfaces serial3/0
+show interfaces serial3/1
+
+show ip eigrp topology 192.168.1.0
+
+Step 5: Configure PBR to provide path control
+
+# R3 Router
+conf t
+ip access-list standard PBR-ACL
+remark ACL matches R4 LAN B traffic
+permit 192.168.4.128 0.0.0.127
+exit
+
+route-map R3-to-R1 permit
+description RM to forward LAN B traffic to R1
+match ip address PBR-ACL
+set ip next-hop 172.16.13.1
+exit
+
+interface s03/2
+ip policy route-map R3-to-R1
+end
+
+show route-map
+
+Step 6: Test the policy
+
+# R3 Router
+conf t
+access-list 1 permit 192.168.4.0 0.0.0.255
+exit
+
+debug ip policy ?
+debug ip policy 1
+
+# R4 Router
+traceroute 192.168.1.1 source 192.168.4.1
+traceroute 192.168.1.1 source 192.168.4.129
+
+# R3 Router
+show route-map
+

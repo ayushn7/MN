@@ -1,0 +1,316 @@
+Practical 3 : Configuring IBGP and EBGP Sessions, Local Preference, and MED
+
+# Apply the following configuration to EACH ROUTER
+
+# Router 1, 2 & 3
+conf t
+no ip domain-lookup
+line con 0
+logging synchronous
+exec-timeout 0 0
+end
+
+# Step 1: Configure interface addresses
+
+# Router 1
+conf t
+hostname ISP
+interface Loopback0
+ip address 192.168.100.1 255.255.255.0
+exit
+interface Serial3/0
+ip address 192.168.1.5 255.255.255.252
+clock rate 128000
+no shutdown
+exit
+interface Serial3/1
+ip address 192.168.1.1 255.255.255.252
+no shutdown
+end
+
+# Router 2
+conf t
+hostname SanJose1
+interface Loopback0
+ip address 172.16.64.1 255.255.255.0
+exit
+interface Serial3/0
+ip address 192.168.1.6 255.255.255.252
+no shutdown
+exit
+interface Serial3/1
+ip address 172.16.1.1 255.255.255.0
+clock rate 128000
+no shutdown
+end
+
+# Router 3
+conf t
+hostname SanJose2
+interface Loopback0
+ip address 172.16.32.1 255.255.255.0
+exit
+interface Serial3/0
+ip address 192.168.1.2 255.255.255.252
+clock rate 128000
+no shutdown
+exit
+interface Serial3/1
+ip address 172.16.1.2 255.255.255.0
+no shutdown
+end
+
+# Step 2: Configure EIGRP
+
+# SanJose1
+conf t
+router eigrp 1
+network 172.16.0.0
+end
+
+# SanJose2
+conf t
+router eigrp 1
+network 172.16.0.0
+end
+
+# Step 3: Configure IBGP and verify BGP neighbors
+
+# SanJose1
+conf t
+router bgp 64512
+neighbor 172.16.32.1 remote-as 64512
+neighbor 172.16.32.1 update-source lo0
+end
+
+#SanJose2
+conf t
+router bgp 64512
+neighbor 172.16.64.1 remote-as 64512
+neighbor 172.16.64.1 update-source lo0
+end
+show ip bgp neighbors
+
+# Step 4: Configure EBGP and verify BGP neighbors
+
+# ISP
+conf t
+router bgp 200
+neighbor 192.168.1.6 remote-as 64512
+neighbor 192.168.1.2 remote-as 64512
+network 192.168.100.0
+end
+
+# SanJose1
+conf t
+ip route 172.16.0.0 255.255.0.0 null0
+router bgp 64512
+neighbor 192.168.1.5 remote-as 200
+network 172.16.0.0
+end
+show ip bgp neighbors
+
+# SanJose2
+conf t
+ip route 172.16.0.0 255.255.0.0 null0
+router bgp 64512
+neighbor 192.168.1.1 remote-as 200
+network 172.16.0.0
+end 
+
+# Step 5: View BGP summary output
+
+# SanJose2
+show ip bgp summary
+
+# Step 6: Verify which path the traffic takes
+
+# ISP
+clear ip bgp *
+ping 172.16.64.1
+ping 172.16.1.1
+ping 172.16.32.1
+ping 172.16.1.2
+show ip bgp
+ping 172.16.1.1 source 192.168.100.1
+ping 172.16.32.1 source 192.168.100.1
+ping 172.16.1.2 source 192.168.100.1
+ping 172.16.64.1 source 192.168.100.1
+ping
+Target IP address: 172.16.64.1
+Extended commands [n]: y
+Source address or interface: 192.168.100.1
+
+# Step 7: Configure the BGP next-hop-self feature
+
+# ISP
+conf t
+router bgp 200
+network 192.168.1.0 mask 255.255.255.252
+network 192.168.1.4 mask 255.255.255.252
+end
+show ip bgp
+
+# SanJose2
+show ip route
+
+# ISP 
+conf t
+router bgp 200
+no network 192.168.1.0 mask 255.255.255.252
+no network 192.168.1.4 mask 255.255.255.252
+exit
+interface serial 3/1
+shutdown
+end
+
+
+# SanJose2
+show ip bgp
+show ip route
+
+# SanJose1
+conf t
+router bgp 64512
+neighbor 172.16.32.1 next-hop-self
+end
+
+# SanJose2
+conf t
+router bgp 64512
+neighbor 172.16.64.1 next-hop-self
+end
+
+# SanJose1
+clear ip bgp *
+
+# SanJose2
+clear ip bgp *
+show ip bgp
+show ip route
+
+# ISP 
+conf t
+interface serial 3/1
+no shutdown
+end
+
+# SanJose2
+show ip route
+
+# Step 8: Set BGP local preference
+
+# SanJose1 
+conf t
+route-map PRIMARY_T1_IN permit 10
+set local-preference 150
+exit
+router bgp 64512
+neighbor 192.168.1.5 route-map PRIMARY_T1_IN in
+end
+
+# SanJose2
+conf t
+route-map SECONDARY_T1_IN permit 10
+set local-preference 125
+exit
+router bgp 64512
+neighbor 192.168.1.1 route-map SECONDARY_T1_IN in
+end
+
+# SanJose1
+clear ip bgp * soft
+
+# SanJose2
+clear ip bgp * soft
+
+# SanJose1
+show ip bgp
+
+# SanJose2
+show ip bgp
+
+# Step 9: Set BGP MED
+
+# ISP
+show ip bgp
+show ip route
+
+# SanJose2
+ping
+Target IP address: 192.168.100.1
+Extended commands [n]: y
+Source address or interface: 172.16.32.1
+Loose, Strict, Record, Timestamp, Verbose[none]: record
+
+# SanJose1
+conf t
+route-map PRIMARY_T1_MED_OUT permit 10
+set Metric 50
+exit
+router bgp 64512
+neighbor 192.168.1.5 route-map PRIMARY_T1_MED_OUT out
+end
+
+# SanJose2
+conf t
+route-map SECONDARY_T1_MED_OUT permit 10
+set Metric 75
+exit
+router bgp 64512
+neighbor 192.168.1.1 route-map SECONDARY_T1_MED_OUT out
+end
+
+# SanJose1
+clear ip bgp * soft
+
+# SanJose2
+clear ip bgp * soft
+
+# SanJose1
+show ip bgp
+
+# SanJose2
+show ip bgp
+ping
+Target IP address: 192.168.100.1
+Extended commands [n]: y
+Source address or interface: 172.16.32.1
+Loose, Strict, Record, Timestamp, Verbose[none]: record
+
+# ISP 
+show ip bgp
+
+# Step 10: Establish a default route
+
+# ISP
+conf t
+router bgp 200
+neighbor 192.168.1.6 default-originate
+neighbor 192.168.1.2 default-originate
+exit
+interface loopback 10
+ip address 10.0.0.1 255.255.255.0
+end
+
+# SanJose1
+show ip route
+
+# SanJose2
+show ip route
+show ip bgp
+traceroute 10.0.0.1
+
+# ISP
+conf t
+interface serial 3/0
+shutdown
+
+# SanJose1
+show ip route
+
+# SanJose2
+show ip route
+
+# SanJose1
+trace 10.0.0.1
